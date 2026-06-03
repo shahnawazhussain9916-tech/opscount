@@ -1,0 +1,52 @@
+.container {
+  padding: 20px;
+}
+
+textarea {
+  width: 400px;
+  height: 100px;
+  padding: 10px;
+}
+
+button {
+  margin: 5px;
+  padding: 8px 12px;
+}
+
+select {
+  padding: 8px;
+  margin: 10px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 15px;
+}
+
+th {
+  background: black;
+  color: white;
+  padding: 10px;
+}
+
+td {
+  padding: 10px;
+  border-bottom: 1px solid #ddd;
+}
+
+/* DONE */
+.done-row {
+  background: #16a34a;
+}
+.done-row td {
+  color: white;
+}
+
+/* UNKNOWN */
+.unknown-row {
+  background: #dc2626;
+}
+.unknown-row td {
+  color: white;
+}
