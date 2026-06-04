@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import Papa from "papaparse";
+import * as XLSX from "xlsx";
 import "./App.css";
 
 const SHEET_URL =
@@ -23,17 +24,10 @@ function App() {
     .toUpperCase();
 
   const normalize = (str) =>
-    (str || "")
-      .toString()
-      .trim()
-      .toLowerCase();
+    (str || "").toString().trim().toLowerCase();
 
   const normalizeOff = (str) =>
-    (str || "")
-      .toString()
-      .trim()
-      .toUpperCase()
-      .slice(0, 3);
+    (str || "").toString().trim().toUpperCase().slice(0, 3);
 
   // =========================
   // LOAD SHEET
@@ -77,7 +71,6 @@ function App() {
 
           empList.push(emp);
 
-          // Multi-ID map
           map[badge?.toLowerCase()] = emp;
           map[login?.toLowerCase()] = emp;
           map[psoft?.toLowerCase()] = emp;
@@ -110,7 +103,7 @@ function App() {
   };
 
   // =========================
-  // CLEAR SHIFT (NEW)
+  // CLEAR SHIFT
   // =========================
   const clearShift = () => {
     setActiveList([]);
@@ -133,9 +126,7 @@ function App() {
     let updated = [...activeList];
 
     if (emp) {
-      const index = updated.findIndex(
-        (e) => e.badge === emp.badge
-      );
+      const index = updated.findIndex((e) => e.badge === emp.badge);
 
       if (index !== -1) {
         if (updated[index].status === "DONE") {
@@ -166,7 +157,7 @@ function App() {
         shift: "-",
         off1: "-",
         off2: "-",
-        status: "NOT IN SHEET",
+        status: "Labor share",
         time,
         unknown: true,
       });
@@ -187,40 +178,80 @@ function App() {
   };
 
   // =========================
-  // COUNTS
+  // COUNTS (FIXED)
   // =========================
-  const doneCount = activeList.filter((r) => r.status === "DONE").length;
-  const pendingCount = activeList.filter((r) => r.status === "PENDING").length;
-  const notInSheetCount = activeList.filter((r) => r.status === "NOT IN SHEET").length;
+  const doneCount = activeList.filter(
+    (r) => r.status === "DONE"
+  ).length;
+
+  const pendingCount = activeList.filter(
+    (r) => r.status === "PENDING"
+  ).length;
+
+  const laborShareCount = activeList.filter(
+    (r) => r.unknown
+  ).length;
 
   // =========================
-  // SORT
+  // SORT (FIXED)
   // =========================
   const sortedList = [...activeList].sort((a, b) => {
-    const priority = {
-      DONE: 0,
-      PENDING: 1,
-      "NOT IN SHEET": 2,
+    const getPriority = (emp) => {
+      if (emp.status === "DONE") return 0;
+      if (emp.status === "PENDING") return 1;
+      if (emp.unknown) return 2;
+      return 3;
     };
-    return priority[a.status] - priority[b.status];
+
+    return getPriority(a) - getPriority(b);
   });
 
   // =========================
-  // CSV
+  // EXCEL DOWNLOAD
   // =========================
-  const downloadCSV = () => {
-    const csv = Papa.unparse(sortedList);
+  const downloadExcel = () => {
+    if (!sortedList.length) {
+      alert("No data available to export.");
+      return;
+    }
 
-    const blob = new Blob([csv], {
-      type: "text/csv;charset=utf-8;",
-    });
+    const exportData = sortedList.map((emp) => ({
+      Psoft: emp.psoft,
+      Badge: emp.badge,
+      Login: emp.login,
+      Name: emp.name,
+      Designation: emp.designation,
+      Division: emp.division,
+      Shift: emp.shift,
+      Off1: emp.off1,
+      Off2: emp.off2,
+      Status: emp.status,
+      Time: emp.time || "",
+    }));
 
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
+    const worksheet = XLSX.utils.json_to_sheet(exportData);
+    const workbook = XLSX.utils.book_new();
 
-    link.href = url;
-    link.download = `handover_${selectedShift}.csv`;
-    link.click();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance");
+
+    worksheet["!cols"] = [
+      { wch: 12 },
+      { wch: 12 },
+      { wch: 15 },
+      { wch: 30 },
+      { wch: 20 },
+      { wch: 20 },
+      { wch: 12 },
+      { wch: 10 },
+      { wch: 10 },
+      { wch: 15 },
+      { wch: 25 },
+    ];
+
+    XLSX.writeFile(
+      workbook,
+      `handover_${selectedShift || "SHIFT"}_${today}.xlsx`
+    );
   };
 
   // =========================
@@ -241,7 +272,6 @@ function App() {
         <option value="NIGHT">Night Shift</option>
       </select>
 
-      {/* START + CLEAR BUTTONS */}
       <button onClick={startShift}>Start Shift</button>
       <button onClick={clearShift}>Clear</button>
 
@@ -254,15 +284,17 @@ function App() {
         onKeyDown={handleKeyDown}
       />
 
-      <button onClick={markDone}>Mark</button>
+      {/* <button onClick={markDone}>Mark</button> */}
 
       <div className="stats">
         <span>✅ Done: {doneCount}</span>
-        <span>🟡 Pending: {pendingCount}</span>
-        <span>🔴 Not In Sheet: {notInSheetCount}</span>
+        <span>🟡 Pending/Absent: {pendingCount}</span>
+        <span>🔴 Labor Share: {laborShareCount}</span>
       </div>
 
-      <button onClick={downloadCSV}>Download CSV</button>
+      <button onClick={downloadExcel}>
+        Download Excel
+      </button>
 
       <h3>Total: {activeList.length}</h3>
 
@@ -290,7 +322,7 @@ function App() {
               className={
                 emp.status === "DONE"
                   ? "done-row"
-                  : emp.status === "NOT IN SHEET"
+                  : emp.unknown
                   ? "unknown-row"
                   : ""
               }
