@@ -8,7 +8,7 @@ const SHEET_URL =
 
 function App() {
   const [employees, setEmployees] = useState([]);
-  const [baseList, setBaseList] = useState([]); // 🔥 important
+  const [baseList, setBaseList] = useState([]);
   const [activeList, setActiveList] = useState([]);
   const [badgeInput, setBadgeInput] = useState("");
   const [selectedShift, setSelectedShift] = useState("");
@@ -70,8 +70,15 @@ function App() {
   // START SHIFT
   // =========================
   const startShift = () => {
+    const todayClean = today.trim().toUpperCase();
+
     const filtered = employees
       .filter((emp) => emp.shift.includes(selectedShift))
+      .filter((emp) => {
+        const off1 = (emp.off1 || "").trim().toUpperCase();
+        const off2 = (emp.off2 || "").trim().toUpperCase();
+        return off1 !== todayClean && off2 !== todayClean;
+      })
       .map((emp) => ({
         ...emp,
         status: "PENDING",
@@ -79,12 +86,12 @@ function App() {
         lastScanned: null,
       }));
 
-    setBaseList(filtered);   // 🔥 truth list
-    setActiveList(filtered); // 🔥 live list
+    setBaseList(filtered);
+    setActiveList(filtered);
   };
 
   // =========================
-  // CLEAR SHIFT
+  // CLEAR
   // =========================
   const clearShift = () => {
     setBaseList([]);
@@ -120,20 +127,17 @@ function App() {
         ? "Came on Week Off"
         : "DONE";
 
+      const newRow = {
+        ...emp,
+        status: newStatus,
+        time,
+        lastScanned: Date.now(),
+      };
+
       if (index !== -1) {
-        updated[index] = {
-          ...updated[index],
-          status: newStatus,
-          time,
-          lastScanned: Date.now(),
-        };
+        updated[index] = { ...updated[index], ...newRow };
       } else {
-        updated.push({
-          ...emp,
-          status: newStatus,
-          time,
-          lastScanned: Date.now(),
-        });
+        updated.push(newRow);
       }
     } else {
       const exists = updated.some(
@@ -170,7 +174,7 @@ function App() {
   };
 
   // =========================
-  // SORT (DONE latest on top)
+  // SORT (latest DONE on top)
   // =========================
   const sortedList = [...activeList].sort((a, b) => {
     const priority = {
@@ -200,18 +204,16 @@ function App() {
     (r) => r.status === "Labor Share"
   ).length;
 
-  // 🔥 FIXED PENDING (DOES NOT CHANGE ON WEEK OFF)
   const pendingCount =
-    baseList.length -
-    activeList.filter(
-      (r) => r.status === "DONE" || r.status === "Labor Share"
-    ).length;
+    baseList.length - doneCount - notInSheetCount;
+
+  const rosterPlan = baseList.length;
 
   const actualHeadCount =
     doneCount + weekOffCount + notInSheetCount;
 
   // =========================
-  // EXCEL EXPORT
+  // EXCEL
   // =========================
   const downloadExcel = () => {
     const exportData = sortedList.map((emp) => ({
@@ -230,12 +232,7 @@ function App() {
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
 
-    XLSX.utils.book_append_sheet(
-      wb,
-      ws,
-      selectedShift || "Shift"
-    );
-
+    XLSX.utils.book_append_sheet(wb, ws, "Shift");
     XLSX.writeFile(wb, `handover_${selectedShift || "shift"}.xlsx`);
   };
 
@@ -245,7 +242,6 @@ function App() {
   return (
     <div className="container">
       <h1>OB OpsCount</h1>
-      <h3>Today: {today}</h3>
 
       <select
         value={selectedShift}
@@ -256,10 +252,10 @@ function App() {
         <option value="NIGHT">Night Shift</option>
       </select>
 
-      <div className="shift-buttons">
-        <button onClick={startShift}>Start Shift</button>
-        <button onClick={clearShift}>Clear</button>
-      </div>
+      <button onClick={startShift}>Start Shift</button>
+      <button onClick={clearShift}>Clear</button>
+
+      <br /><br />
 
       <textarea
         placeholder="Scan Badge / PSOFT / LOGIN"
@@ -270,17 +266,20 @@ function App() {
 
       <button onClick={markDone}>Mark</button>
 
+      {/* ✅ SUMMARY MOVED BELOW FORM */}
       <div className="summary">
-        <h3>Todays Roaster Plan: {activeList.length}</h3>
+        <h3>Todays Roaster Plan: {rosterPlan}</h3>
         <h3>Todays Actual Head Count: {actualHeadCount}</h3>
       </div>
 
       <div className="stats">
         <span>✅ Done: {doneCount}</span>
         <span>🟡 Pending: {pendingCount}</span>
-        <span>🟣AA's came on Week Off: {weekOffCount}</span>
+        <span>🟣 AA's came on Week Off: {weekOffCount}</span>
         <span>🔴 Labor Share: {notInSheetCount}</span>
       </div>
+
+      <br />
 
       <button onClick={downloadExcel}>Download Excel</button>
 
