@@ -8,11 +8,11 @@ const SHEET_URL =
 
 function App() {
   const [employees, setEmployees] = useState([]);
+  const [baseList, setBaseList] = useState([]); // 🔥 important
   const [activeList, setActiveList] = useState([]);
   const [badgeInput, setBadgeInput] = useState("");
   const [selectedShift, setSelectedShift] = useState("");
   const [idMap, setIdMap] = useState({});
-  const [lastScannedBadge, setLastScannedBadge] = useState("");
 
   const today = new Date()
     .toLocaleDateString("en-US", {
@@ -76,19 +76,20 @@ function App() {
         ...emp,
         status: "PENDING",
         time: "",
+        lastScanned: null,
       }));
 
-    setActiveList(filtered);
-    setLastScannedBadge("");
+    setBaseList(filtered);   // 🔥 truth list
+    setActiveList(filtered); // 🔥 live list
   };
 
   // =========================
   // CLEAR SHIFT
   // =========================
   const clearShift = () => {
+    setBaseList([]);
     setActiveList([]);
     setBadgeInput("");
-    setLastScannedBadge("");
   };
 
   // =========================
@@ -115,7 +116,9 @@ function App() {
 
       const index = updated.findIndex((e) => e.badge === emp.badge);
 
-      const newStatus = isWeekOff ? "Came on Week Off" : "DONE";
+      const newStatus = isWeekOff
+        ? "Came on Week Off"
+        : "DONE";
 
       if (index !== -1) {
         updated[index] = {
@@ -132,8 +135,6 @@ function App() {
           lastScanned: Date.now(),
         });
       }
-
-      setLastScannedBadge(emp.badge);
     } else {
       const exists = updated.some(
         (e) =>
@@ -153,11 +154,8 @@ function App() {
           off2: "-",
           status: "Labor Share",
           time,
-          unknown: true,
         });
       }
-
-      setLastScannedBadge(input);
     }
 
     setActiveList(updated);
@@ -172,7 +170,7 @@ function App() {
   };
 
   // =========================
-  // SORT
+  // SORT (DONE latest on top)
   // =========================
   const sortedList = [...activeList].sort((a, b) => {
     const priority = {
@@ -193,9 +191,24 @@ function App() {
   // COUNTS
   // =========================
   const doneCount = activeList.filter((r) => r.status === "DONE").length;
-  const pendingCount = activeList.filter((r) => r.status === "PENDING").length;
-  const weekOffCount = activeList.filter((r) => r.status === "Came on Week Off").length;
-  const notInSheetCount = activeList.filter((r) => r.status === "Labor Share").length;
+
+  const weekOffCount = activeList.filter(
+    (r) => r.status === "Came on Week Off"
+  ).length;
+
+  const notInSheetCount = activeList.filter(
+    (r) => r.status === "Labor Share"
+  ).length;
+
+  // 🔥 FIXED PENDING (DOES NOT CHANGE ON WEEK OFF)
+  const pendingCount =
+    baseList.length -
+    activeList.filter(
+      (r) => r.status === "DONE" || r.status === "Labor Share"
+    ).length;
+
+  const actualHeadCount =
+    doneCount + weekOffCount + notInSheetCount;
 
   // =========================
   // EXCEL EXPORT
@@ -214,16 +227,16 @@ function App() {
       Time: emp.time || "-",
     }));
 
-    const worksheet = XLSX.utils.json_to_sheet(exportData);
-    const workbook = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    const wb = XLSX.utils.book_new();
 
     XLSX.utils.book_append_sheet(
-      workbook,
-      worksheet,
+      wb,
+      ws,
       selectedShift || "Shift"
     );
 
-    XLSX.writeFile(workbook, `handover_${selectedShift || "shift"}.xlsx`);
+    XLSX.writeFile(wb, `handover_${selectedShift || "shift"}.xlsx`);
   };
 
   // =========================
@@ -232,7 +245,6 @@ function App() {
   return (
     <div className="container">
       <h1>OB OpsCount</h1>
-
       <h3>Today: {today}</h3>
 
       <select
@@ -244,13 +256,10 @@ function App() {
         <option value="NIGHT">Night Shift</option>
       </select>
 
-      {/* SHIFT BUTTONS SIDE BY SIDE */}
       <div className="shift-buttons">
         <button onClick={startShift}>Start Shift</button>
         <button onClick={clearShift}>Clear</button>
       </div>
-
-      <hr />
 
       <textarea
         placeholder="Scan Badge / PSOFT / LOGIN"
@@ -261,16 +270,19 @@ function App() {
 
       <button onClick={markDone}>Mark</button>
 
+      <div className="summary">
+        <h3>Todays Roaster Plan: {activeList.length}</h3>
+        <h3>Todays Actual Head Count: {actualHeadCount}</h3>
+      </div>
+
       <div className="stats">
         <span>✅ Done: {doneCount}</span>
         <span>🟡 Pending: {pendingCount}</span>
-        <span>🟣 Came on Week Off: {weekOffCount}</span>
+        <span>🟣AA's came on Week Off: {weekOffCount}</span>
         <span>🔴 Labor Share: {notInSheetCount}</span>
       </div>
 
       <button onClick={downloadExcel}>Download Excel</button>
-
-      <h3>Total: {activeList.length}</h3>
 
       <table>
         <thead>
