@@ -264,7 +264,7 @@ function App() {
       <div className="stats">
         <span>✅ Done: {doneCount}</span>
         <span>🟡 Pending: {pendingCount}</span>
-        <span>🟣 Week Off Came: {weekOffCount}</span>
+        <span>🟣 Came on Week Off: {weekOffCount}</span>
         <span>🔴 Labor Share: {notInSheetCount}</span>
       </div>
 
