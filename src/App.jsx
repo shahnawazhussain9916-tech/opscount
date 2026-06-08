@@ -12,10 +12,8 @@ function App() {
   const [badgeInput, setBadgeInput] = useState("");
   const [selectedShift, setSelectedShift] = useState("");
   const [idMap, setIdMap] = useState({});
+  const [lastScannedBadge, setLastScannedBadge] = useState("");
 
-  // =========================
-  // TODAY
-  // =========================
   const today = new Date()
     .toLocaleDateString("en-US", {
       weekday: "short",
@@ -63,7 +61,6 @@ function App() {
             login: login?.trim(),
             name,
             designation,
-            division,
             shift: (shift || "").toUpperCase().trim(),
             off1: normalizeOff(off1),
             off2: normalizeOff(off2),
@@ -88,11 +85,7 @@ function App() {
   const startShift = () => {
     const filtered = employees
       .filter((emp) => emp.shift.includes(selectedShift))
-      .filter(
-        (emp) =>
-          emp.off1 !== today &&
-          emp.off2 !== today
-      )
+      .filter((emp) => emp.off1 !== today && emp.off2 !== today)
       .map((emp) => ({
         ...emp,
         status: "PENDING",
@@ -100,14 +93,16 @@ function App() {
       }));
 
     setActiveList(filtered);
+    setLastScannedBadge("");
   };
 
   // =========================
-  // CLEAR SHIFT
+  // CLEAR
   // =========================
   const clearShift = () => {
     setActiveList([]);
     setBadgeInput("");
+    setLastScannedBadge("");
   };
 
   // =========================
@@ -129,47 +124,52 @@ function App() {
       const index = updated.findIndex((e) => e.badge === emp.badge);
 
       if (index !== -1) {
-        if (updated[index].status === "DONE") {
-          setBadgeInput("");
-          return;
-        }
-
         updated[index] = {
           ...updated[index],
           status: "DONE",
           time,
+          lastScanned: Date.now(),
         };
       } else {
         updated.push({
           ...emp,
           status: "DONE",
           time,
+          lastScanned: Date.now(),
         });
       }
+
+      setLastScannedBadge(emp.badge);
     } else {
-      updated.push({
-        psoft: "-",
-        badge: input,
-        login: "-",
-        name: "-",
-        designation: "-",
-        division: "-",
-        shift: "-",
-        off1: "-",
-        off2: "-",
-        status: "Labor share",
-        time,
-        unknown: true,
-      });
+      const exists = updated.some(
+        (e) =>
+          e.status === "Labor Share" &&
+          normalize(e.badge) === input
+      );
+
+      if (!exists) {
+        updated.push({
+          psoft: "-",
+          badge: input,
+          login: "-",
+          name: "-",
+          designation: "-",
+          shift: "-",
+          off1: "-",
+          off2: "-",
+          status: "Labor Share",
+          time,
+          unknown: true,
+        });
+      }
+
+      setLastScannedBadge(input);
     }
 
     setActiveList(updated);
     setBadgeInput("");
   };
 
-  // =========================
-  // ENTER KEY
-  // =========================
   const handleKeyDown = (e) => {
     if (e.key === "Enter") {
       e.preventDefault();
@@ -178,79 +178,58 @@ function App() {
   };
 
   // =========================
-  // COUNTS (FIXED)
-  // =========================
-  const doneCount = activeList.filter(
-    (r) => r.status === "DONE"
-  ).length;
-
-  const pendingCount = activeList.filter(
-    (r) => r.status === "PENDING"
-  ).length;
-
-  const laborShareCount = activeList.filter(
-    (r) => r.unknown
-  ).length;
-
-  // =========================
-  // SORT (FIXED)
+  // SORT LOGIC
   // =========================
   const sortedList = [...activeList].sort((a, b) => {
-    const getPriority = (emp) => {
-      if (emp.status === "DONE") return 0;
-      if (emp.status === "PENDING") return 1;
-      if (emp.unknown) return 2;
-      return 3;
+    const priority = {
+      DONE: 0,
+      PENDING: 1,
+      "Labor Share": 2,
     };
 
-    return getPriority(a) - getPriority(b);
+    if (a.status === "DONE" && b.status === "DONE") {
+      return (b.lastScanned || 0) - (a.lastScanned || 0);
+    }
+
+    return priority[a.status] - priority[b.status];
   });
 
   // =========================
-  // EXCEL DOWNLOAD
+  // COUNTS
+  // =========================
+  const doneCount = activeList.filter((r) => r.status === "DONE").length;
+  const pendingCount = activeList.filter((r) => r.status === "PENDING").length;
+  const notInSheetCount = activeList.filter((r) => r.status === "Labor Share").length;
+
+  // =========================
+  // EXCEL EXPORT
   // =========================
   const downloadExcel = () => {
-    if (!sortedList.length) {
-      alert("No data available to export.");
-      return;
-    }
-
     const exportData = sortedList.map((emp) => ({
       Psoft: emp.psoft,
       Badge: emp.badge,
       Login: emp.login,
       Name: emp.name,
       Designation: emp.designation,
-      Division: emp.division,
       Shift: emp.shift,
       Off1: emp.off1,
       Off2: emp.off2,
       Status: emp.status,
-      Time: emp.time || "",
+      Time: emp.time || "-",
     }));
 
     const worksheet = XLSX.utils.json_to_sheet(exportData);
     const workbook = XLSX.utils.book_new();
 
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance");
-
-    worksheet["!cols"] = [
-      { wch: 12 },
-      { wch: 12 },
-      { wch: 15 },
-      { wch: 30 },
-      { wch: 20 },
-      { wch: 20 },
-      { wch: 12 },
-      { wch: 10 },
-      { wch: 10 },
-      { wch: 15 },
-      { wch: 25 },
-    ];
+    XLSX.utils.book_append_sheet(
+      workbook,
+      worksheet,
+      selectedShift || "Shift"
+    );
 
     XLSX.writeFile(
       workbook,
-      `handover_${selectedShift || "SHIFT"}_${today}.xlsx`
+      `handover_${selectedShift || "shift"}.xlsx`
     );
   };
 
@@ -259,14 +238,11 @@ function App() {
   // =========================
   return (
     <div className="container">
-      <h1>OpsCount</h1>
+      <h1>OB OpsCount</h1>
 
       <h3>Today: {today}</h3>
 
-      <select
-        value={selectedShift}
-        onChange={(e) => setSelectedShift(e.target.value)}
-      >
+      <select value={selectedShift} onChange={(e) => setSelectedShift(e.target.value)}>
         <option value="">Select Shift</option>
         <option value="DAY">Day Shift</option>
         <option value="NIGHT">Night Shift</option>
@@ -284,17 +260,15 @@ function App() {
         onKeyDown={handleKeyDown}
       />
 
-      {/* <button onClick={markDone}>Mark</button> */}
+      <button onClick={markDone}>Mark</button>
 
       <div className="stats">
         <span>✅ Done: {doneCount}</span>
-        <span>🟡 Pending/Absent: {pendingCount}</span>
-        <span>🔴 Labor Share: {laborShareCount}</span>
+        <span>🟡 Pending: {pendingCount}</span>
+        <span>🔴 Labor Share: {notInSheetCount}</span>
       </div>
 
-      <button onClick={downloadExcel}>
-        Download Excel
-      </button>
+      <button onClick={downloadExcel}>Download Excel</button>
 
       <h3>Total: {activeList.length}</h3>
 
@@ -306,7 +280,6 @@ function App() {
             <th>Login</th>
             <th>Name</th>
             <th>Designation</th>
-            <th>Division</th>
             <th>Shift</th>
             <th>Off1</th>
             <th>Off2</th>
@@ -322,7 +295,7 @@ function App() {
               className={
                 emp.status === "DONE"
                   ? "done-row"
-                  : emp.unknown
+                  : emp.status === "Labor Share"
                   ? "unknown-row"
                   : ""
               }
@@ -332,7 +305,6 @@ function App() {
               <td>{emp.login}</td>
               <td>{emp.name}</td>
               <td>{emp.designation}</td>
-              <td>{emp.division}</td>
               <td>{emp.shift}</td>
               <td>{emp.off1}</td>
               <td>{emp.off2}</td>
