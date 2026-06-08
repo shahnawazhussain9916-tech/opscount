@@ -311,11 +311,13 @@ function App() {
               <td>{emp.status}</td>
               <td>{emp.time || "-"}</td>
             </tr>
+          
           ))}
         </tbody>
       </table>
     </div>
   );
 }
+
 
 export default App;
