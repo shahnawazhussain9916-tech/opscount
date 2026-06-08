@@ -19,13 +19,11 @@ function App() {
       weekday: "short",
       timeZone: "Asia/Riyadh",
     })
-    .toUpperCase();
+    .toUpperCase()
+    .slice(0, 3);
 
   const normalize = (str) =>
     (str || "").toString().trim().toLowerCase();
-
-  const normalizeOff = (str) =>
-    (str || "").toString().trim().toUpperCase().slice(0, 3);
 
   // =========================
   // LOAD SHEET
@@ -33,6 +31,7 @@ function App() {
   useEffect(() => {
     Papa.parse(SHEET_URL, {
       download: true,
+      header: true,
       skipEmptyLines: true,
       complete: (results) => {
         const rows = results.data;
@@ -40,37 +39,25 @@ function App() {
         const empList = [];
         const map = {};
 
-        rows.slice(1).forEach((row) => {
-          const [
-            psoft,
-            badge,
-            login,
-            name,
-            designation,
-            division,
-            shift,
-            off1,
-            off2,
-          ] = row;
-
-          if (!badge) return;
-
+        rows.forEach((row) => {
           const emp = {
-            psoft: psoft?.trim(),
-            badge: badge?.trim(),
-            login: login?.trim(),
-            name,
-            designation,
-            shift: (shift || "").toUpperCase().trim(),
-            off1: normalizeOff(off1),
-            off2: normalizeOff(off2),
+            psoft: row["Psoft"]?.trim(),
+            badge: row["Badge ID"]?.trim(),
+            login: row["Login"]?.trim(),
+            name: row["Employee Name"]?.trim(),
+            designation: row["Designation"]?.trim(),
+            shift: (row["Shift"] || "").toUpperCase().trim(),
+            off1: (row["off 1"] || "").toUpperCase().trim(),
+            off2: (row["off 2"] || "").toUpperCase().trim(),
           };
+
+          if (!emp.badge) return;
 
           empList.push(emp);
 
-          map[badge?.toLowerCase()] = emp;
-          map[login?.toLowerCase()] = emp;
-          map[psoft?.toLowerCase()] = emp;
+          map[emp.badge?.toLowerCase()] = emp;
+          map[emp.login?.toLowerCase()] = emp;
+          map[emp.psoft?.toLowerCase()] = emp;
         });
 
         setEmployees(empList);
@@ -85,7 +72,6 @@ function App() {
   const startShift = () => {
     const filtered = employees
       .filter((emp) => emp.shift.includes(selectedShift))
-      .filter((emp) => emp.off1 !== today && emp.off2 !== today)
       .map((emp) => ({
         ...emp,
         status: "PENDING",
@@ -97,7 +83,7 @@ function App() {
   };
 
   // =========================
-  // CLEAR
+  // CLEAR SHIFT
   // =========================
   const clearShift = () => {
     setActiveList([]);
@@ -121,19 +107,27 @@ function App() {
     let updated = [...activeList];
 
     if (emp) {
+      const todayClean = today.trim().toUpperCase();
+      const off1 = (emp.off1 || "").trim().toUpperCase();
+      const off2 = (emp.off2 || "").trim().toUpperCase();
+
+      const isWeekOff = off1 === todayClean || off2 === todayClean;
+
       const index = updated.findIndex((e) => e.badge === emp.badge);
+
+      const newStatus = isWeekOff ? "Came on Week Off" : "DONE";
 
       if (index !== -1) {
         updated[index] = {
           ...updated[index],
-          status: "DONE",
+          status: newStatus,
           time,
           lastScanned: Date.now(),
         };
       } else {
         updated.push({
           ...emp,
-          status: "DONE",
+          status: newStatus,
           time,
           lastScanned: Date.now(),
         });
@@ -178,13 +172,14 @@ function App() {
   };
 
   // =========================
-  // SORT LOGIC
+  // SORT
   // =========================
   const sortedList = [...activeList].sort((a, b) => {
     const priority = {
       DONE: 0,
       PENDING: 1,
-      "Labor Share": 2,
+      "Came on Week Off": 2,
+      "Labor Share": 3,
     };
 
     if (a.status === "DONE" && b.status === "DONE") {
@@ -199,6 +194,7 @@ function App() {
   // =========================
   const doneCount = activeList.filter((r) => r.status === "DONE").length;
   const pendingCount = activeList.filter((r) => r.status === "PENDING").length;
+  const weekOffCount = activeList.filter((r) => r.status === "Came on Week Off").length;
   const notInSheetCount = activeList.filter((r) => r.status === "Labor Share").length;
 
   // =========================
@@ -227,10 +223,7 @@ function App() {
       selectedShift || "Shift"
     );
 
-    XLSX.writeFile(
-      workbook,
-      `handover_${selectedShift || "shift"}.xlsx`
-    );
+    XLSX.writeFile(workbook, `handover_${selectedShift || "shift"}.xlsx`);
   };
 
   // =========================
@@ -242,14 +235,20 @@ function App() {
 
       <h3>Today: {today}</h3>
 
-      <select value={selectedShift} onChange={(e) => setSelectedShift(e.target.value)}>
+      <select
+        value={selectedShift}
+        onChange={(e) => setSelectedShift(e.target.value)}
+      >
         <option value="">Select Shift</option>
         <option value="DAY">Day Shift</option>
         <option value="NIGHT">Night Shift</option>
       </select>
 
-      <button onClick={startShift}>Start Shift</button>
-      <button onClick={clearShift}>Clear</button>
+      {/* SHIFT BUTTONS SIDE BY SIDE */}
+      <div className="shift-buttons">
+        <button onClick={startShift}>Start Shift</button>
+        <button onClick={clearShift}>Clear</button>
+      </div>
 
       <hr />
 
@@ -265,6 +264,7 @@ function App() {
       <div className="stats">
         <span>✅ Done: {doneCount}</span>
         <span>🟡 Pending: {pendingCount}</span>
+        <span>🟣 Week Off Came: {weekOffCount}</span>
         <span>🔴 Labor Share: {notInSheetCount}</span>
       </div>
 
@@ -295,6 +295,8 @@ function App() {
               className={
                 emp.status === "DONE"
                   ? "done-row"
+                  : emp.status === "Came on Week Off"
+                  ? "weekoff-row"
                   : emp.status === "Labor Share"
                   ? "unknown-row"
                   : ""
@@ -311,13 +313,11 @@ function App() {
               <td>{emp.status}</td>
               <td>{emp.time || "-"}</td>
             </tr>
-          
           ))}
         </tbody>
       </table>
     </div>
   );
 }
-
 
 export default App;

@@ -50,3 +50,8 @@ td {
 .unknown-row td {
   color: white;
 }
+
+.weekoff-row {
+  background-color: #b57cff !important; /* purple */
+  color: white;
+}
